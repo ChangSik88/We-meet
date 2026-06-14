@@ -3,8 +3,10 @@ import re
 import asyncio
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from prisma import Prisma
+
+
 
 load_dotenv()
 
@@ -83,7 +85,7 @@ def split_hierarchical(text, filename_category):
 async def main():
     db = Prisma()
     await db.connect()
-    print("✅ 로컬 DB 연결 성공")
+    print("DB 연결 성공")
 
     print("🧹 기존 Policy 데이터를 모두 삭제합니다...")
     await db.execute_raw('TRUNCATE TABLE "Policy";')
@@ -118,7 +120,7 @@ async def main():
     print(f"\n✂️ 총 {len(all_articles)}개의 통합 조항이 준비되었습니다.")
     
     print("🧠 한국어 전용 AI 모델 로드 중 (최초 1회 로딩 시 시간이 조금 걸립니다)...")
-    embeddings = HuggingFaceEmbeddings(model_name="jhgan/ko-sroberta-multitask")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     
     success_count = 0
     for chunk in all_articles:

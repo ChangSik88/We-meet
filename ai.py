@@ -2,14 +2,14 @@
 import json
 import asyncio
 from dotenv import load_dotenv
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
-
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 load_dotenv()
 
-# 1. 모델 초기화 (서버 켜질 때 한 번만 로드)
-embeddings = HuggingFaceEmbeddings(model_name="jhgan/ko-sroberta-multitask")
+
+
+embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
 
 async def stream_chat(query: str, db, session_id: int = None):
