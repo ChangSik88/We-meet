@@ -74,6 +74,7 @@ Pygments==2.20.0
 pypdf==6.11.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
+python-multipart==0.0.29
 PyYAML==6.0.3
 regex==2026.5.9
 requests==2.34.2
