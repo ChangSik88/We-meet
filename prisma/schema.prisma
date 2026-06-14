@@ -13,9 +13,38 @@ datasource db {
 model Policy {
   id          Int       @id @default(autoincrement())
   category    String
+  chapter     String?
   article_num String
   content     String
   embedding   Unsupported("vector(768)")
-  form_url    String?
+  form_url    String[]
   created_at  DateTime  @default(now())
+}
+
+model User {
+  id        Int       @id @default(autoincrement())
+  email     String    @unique
+  name      String
+  // 한 명의 유저는 여러 개의 채팅방(세션)을 가질 수 있음
+  sessions  ChatSession[] 
+  createdAt DateTime  @default(now())
+}
+
+model ChatSession {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  title     String    // 예: "휴가 관련 질문" (첫 질문 내용으로 자동 생성)
+  user      User      @relation(fields: [userId], references: [id])
+  // 하나의 채팅방은 여러 개의 메시지를 가짐
+  messages  Message[] 
+  createdAt DateTime  @default(now())
+}
+
+model Message {
+  id        Int       @id @default(autoincrement())
+  sessionId Int
+  role      String    // "user" 또는 "ai"
+  content   String    // 대화 내용
+  session   ChatSession @relation(fields: [sessionId], references: [id])
+  createdAt DateTime  @default(now())
 }
