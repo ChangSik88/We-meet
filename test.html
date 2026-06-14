@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>사내 규정 AI 봇 테스트 (미리보기 UI)</title>
+    <style>
+        /* 좌우 화면 분할 레이아웃 */
+        body { margin: 0; display: flex; height: 100vh; font-family: 'Malgun Gothic', sans-serif; }
+        #left-panel { width: 50%; padding: 30px; display: flex; flex-direction: column; overflow-y: auto; }
+        #right-panel { width: 50%; background-color: #525659; border-left: 2px solid #ccc; }
+        
+        /* 채팅 UI 스타일 */
+        #query { width: 100%; padding: 10px; font-size: 16px; margin-bottom: 10px; box-sizing: border-box; }
+        button.send-btn { padding: 10px 20px; font-size: 16px; background-color: #007bff; color: white; border: none; cursor: pointer; border-radius: 5px; }
+        button.send-btn:hover { background-color: #0056b3; }
+        #answer { background: #f8f9fa; padding: 20px; border-radius: 8px; line-height: 1.6; white-space: pre-wrap; font-size: 15px; }
+
+        /* 🚀 핵심: 첨부파일 컨테이너 박스 UI */
+        .file-box {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-top: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .file-box:hover { border-color: #007bff; background-color: #f1f7ff; }
+        .file-info { font-weight: bold; color: #333; }
+        
+        /* 다운로드 버튼 (아이콘 역할) */
+        .download-btn {
+            background-color: #f1f1f1;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .download-btn:hover { background-color: #e2e2e2; }
+    </style>
+</head>
+<body>
+
+    <div id="left-panel">
+        <h2>사내 규정 AI 봇 테스트</h2>
+        <div>
+            <input type="text" id="query" placeholder="질문을 입력하세요 (예: 반차 서류 뭐 내야해?)">
+            <button class="send-btn" type="button" onclick="ask()">전송</button>
+        </div>
+        <div id="status" style="color: gray; margin-top: 10px; font-weight: bold;"></div>
+        <div id="answer"></div>
+    </div>
+
+    <div id="right-panel">
+        <iframe id="pdf-viewer" src="" width="100%" height="100%" style="border: none;"></iframe>
+    </div>
+
+    <script>
+        async function ask() {
+            const query = document.getElementById('query').value;
+            if (!query) return;
+
+            document.getElementById('status').style.color = "gray";
+            document.getElementById('status').innerText = "요청 보냄...";
+            document.getElementById('answer').innerText = ""; 
+            
+            // 새 질문 시 우측 미리보기 창 초기화
+            document.getElementById('pdf-viewer').src = ""; 
+
+            try {
+                const response = await fetch("http://localhost:8000/api/chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ Question: query }) 
+                });
+
+                if (!response.ok) throw new Error(`HTTP 에러: ${response.status}`);
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let buffer = "";
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split('\n\n');
+                    buffer = parts.pop(); 
+
+                    for (const part of parts) {
+                        if (part.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(part.substring(6));
+
+                                if (data.type === 'status') {
+                                    document.getElementById('status').innerText = data.message;
+                                } else if (data.type === 'text') {
+                                    // 텍스트는 먼저 평범하게 화면에 찍어줍니다.
+                                    document.getElementById('answer').innerText += data.chunk;
+                                } else if (data.type === 'done') {
+                                    document.getElementById('status').style.color = "blue";
+                                    document.getElementById('status').innerText = "답변 완료!";
+                                    
+                                    // 🚀 답변이 완료되면 텍스트 안의 [양식](URL)을 예쁜 박스로 변환합니다!
+                                    convertLinksToBoxes();
+                                } else if (data.type === 'error') {
+                                    document.getElementById('status').style.color = "red";
+                                    document.getElementById('status').innerText = "❌ 에러: " + data.message;
+                                }
+                            } catch (e) {
+                                console.error("파싱 무시됨:", e);
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                document.getElementById('status').style.color = "red";
+                document.getElementById('status').innerText = "❌ 통신 실패: " + err.message;
+            }
+        }
+
+        // 💡 [핵심 기능 1] AI의 마크다운 링크를 컨테이너 박스로 변환
+        function convertLinksToBoxes() {
+            const answerDiv = document.getElementById('answer');
+            let text = answerDiv.innerText;
+
+            // 정규식을 사용하여 [양식명](URL) 패턴을 찾음
+            const regex = /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g;
+
+            // 평문 텍스트를 HTML 박스 형태로 치환
+            let htmlContent = text.replace(regex, function(match, title, url) {
+                return `
+                    <div class="file-box" onclick="showPreview('${url}')">
+                        <div class="file-info">📄 ${title}</div>
+                        <button class="download-btn" onclick="downloadFile(event, '${url}')">📥 다운로드</button>
+                    </div>
+                `;
+            });
+
+            // 화면에 반영
+            answerDiv.innerHTML = htmlContent;
+        }
+
+        // 💡 [핵심 기능 2] 박스 클릭 시 우측에 PDF 미리보기 띄우기
+        function showPreview(url) {
+            document.getElementById('pdf-viewer').src = url;
+            console.log("미리보기 실행:", url);
+        }
+
+        // 💡 [핵심 기능 3] 다운로드 아이콘 클릭 시 파일 다운로드 (이벤트 버블링 차단)
+        function downloadFile(event, url) {
+            // 🚀 이게 제일 중요합니다! 이 코드가 없으면 다운로드 버튼을 눌렀을 때 부모 박스의 미리보기도 같이 실행되어 버립니다.
+            event.stopPropagation(); 
+            
+            // 새 창(탭)으로 열어 다운로드 유도
+            window.open(url, '_blank');
+            console.log("다운로드 실행:", url);
+        }
+    </script>
+</body>
+</html>
