@@ -16,7 +16,7 @@ model Policy {
   chapter     String?
   article_num String
   content     String
-  embedding   Unsupported("vector(768)")
+  embedding   Unsupported("vector(3072)")
   form_url    String[]
   created_at  DateTime  @default(now())
 }
