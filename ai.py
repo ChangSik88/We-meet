@@ -5,12 +5,12 @@ from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
 load_dotenv()
 
-
-
+# 1. 임베딩 및 LLM 설정 (팀장님 리스트에 있던 3.1 모델 사용)
 embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
+llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0.7)
 
 async def stream_chat(query: str, db, session_id: int = None):
     try:
@@ -26,12 +26,16 @@ async def stream_chat(query: str, db, session_id: int = None):
             )
             session_id = new_session.id
             
-            # 새 세션이 생성되었음을 프론트엔드에 알림 (URL 업데이트용)
+            # 새 세션이 생성되었음을 프론트엔드에 알림
             yield f"data: {json.dumps({'type': 'session_info', 'sessionId': session_id}, ensure_ascii=False)}\n\n"
 
-        # 유저의 질문 DB에 저장
+        # ⭐️ [수정 포인트 1] 유저의 질문 DB에 저장 (sessionId 직접 명시 + str 강제 변환)
         await db.message.create(
-            data={"sessionId": session_id, "role": "user", "content": query}
+            data={
+                "sessionId": int(session_id),
+                "role": "user", 
+                "content": str(query)
+            }
         )
 
         # 🚀 2. 과거 대화 내역(History) 불러오기
@@ -46,7 +50,7 @@ async def stream_chat(query: str, db, session_id: int = None):
             role_name = "사용자" if msg.role == "user" else "AI"
             history_text += f"[{role_name}]: {msg.content}\n"
 
-        # 3. 벡터 DB 검색 (기존 로직 동일)
+        # 3. 벡터 DB 검색 
         query_vector = embeddings.embed_query(query)
         vector_str = '[' + ','.join(map(str, query_vector)) + ']'
 
@@ -62,7 +66,7 @@ async def stream_chat(query: str, db, session_id: int = None):
 
         yield f"data: {json.dumps({'type': 'status', 'message': '💡 관련 규정을 찾았습니다. 답변을 정리 중입니다...'}, ensure_ascii=False)}\n\n"
 
-        # 4. 컨텍스트 조립 (기존 로직 동일)
+        # 4. 컨텍스트 조립 
         context_text = ""
         for idx, row in enumerate(search_results):
             category = row.get("category", "")
@@ -75,7 +79,7 @@ async def stream_chat(query: str, db, session_id: int = None):
                 for f_idx, url in enumerate(form_url):
                     context_text += f"▶ 첨부양식 URL {f_idx+1}: {url}\n"
 
-        # 🚀 5. 프롬프트 수정 (과거 대화 내역 포함)
+        # 🚀 5. 프롬프트 세팅
         prompt_template = PromptTemplate.from_template(
             """당신은 사내 규정을 안내하는 친절하고 전문적인 AI 어시스턴트입니다.
             반드시 아래 제공된 [관련규정]을 바탕으로 사용자의 질문에 답변하세요.
@@ -101,14 +105,20 @@ async def stream_chat(query: str, db, session_id: int = None):
         response = await llm.ainvoke(prompt)
         final_answer = response.content
 
-        # 🚀 7. AI 답변을 DB에 저장
+        # ⭐️ [수정 포인트 2] AI 답변을 DB에 저장 (sessionId 직접 명시 + str 강제 변환)
         await db.message.create(
-            data={"sessionId": session_id, "role": "ai", "content": final_answer}
+            data={
+                "sessionId": int(session_id),
+                "role": "ai", 
+                "content": str(final_answer)
+            }
         )
 
         # 8. 프론트엔드로 전송
-        yield f"data: {json.dumps({'type': 'text', 'chunk': final_answer}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'text', 'chunk': str(final_answer)}, ensure_ascii=False)}\n\n"
         yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
 
     except Exception as e:
+        # 에러 발생 시 로그 출력 및 프론트 전송
+        print(f"❌ AI 스트리밍 에러: {str(e)}")
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"

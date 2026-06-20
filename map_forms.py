@@ -2,6 +2,7 @@ import os
 import asyncio
 from dotenv import load_dotenv
 from prisma import Prisma
+from urllib.parse import unquote_plus
 
 load_dotenv()
 
@@ -47,19 +48,18 @@ async def main():
     
     for item in form_mappings:
         try:
-            # 🚀 핵심 로직: PostgreSQL의 array_append 함수를 활용하여 
-            # 기존 배열 데이터를 유지하면서 뒤에 S3 URL을 덧붙입니다.
-            # 중복 실행 시 같은 주소가 두 번 들어가는 것을 방지하기 위해 중복 검증 필터링을 거치면 좋지만, 
-            # 깔끔하게 엎어치는 쿼리 대신 순차 적재 방식을 사용하여 안전성을 확보했습니다.
+            # 🚀 인코딩된 URL을 순수 원본 텍스트(쉼표, 띄어쓰기 복구)로 강제 변환
+            clean_url = unquote_plus(item["url"])
+
             await db.execute_raw(
                 '''
                 UPDATE "Policy"
                 SET form_url = array_append(form_url, $1)
                 WHERE category = $2 AND article_num = $3
                 ''',
-                item["url"], item["cat"], item["article"]
+                clean_url, item["cat"], item["article"]  # 👈 item["url"] 대신 clean_url 사용
             )
-            print(f"   🔗 매핑 성공: [{item['cat']}] {item['article']} -> {item['url'].split('/')[-1]}")
+            print(f"   🔗 매핑 성공: [{item['cat']}] {item['article']} -> {clean_url.split('/')[-1]}")
             success_count += 1
         except Exception as e:
             print(f"   ❌ 매핑 실패: [{item['cat']}] {item['article']} -> {e}")
