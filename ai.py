@@ -103,19 +103,24 @@ async def stream_chat(query: str, db, session_id: int = None):
 
         # 6. 답변 생성
         response = await llm.ainvoke(prompt)
-        final_answer = response.content
+        
+        # 🚀 텍스트 추출 로직 (리스트로 오면 알맹이만 빼고, 아니면 그냥 쓴다)
+        if isinstance(response.content, list):
+            final_answer = response.content[0].get("text", "")
+        else:
+            final_answer = str(response.content)
 
-        # ⭐️ [수정 포인트 2] AI 답변을 DB에 저장 (sessionId 직접 명시 + str 강제 변환)
+        #  7. AI 답변을 DB에 저장 (이 아래는 그대로 두시면 됩니다!)
         await db.message.create(
             data={
                 "sessionId": int(session_id),
                 "role": "ai", 
-                "content": str(final_answer)
+                "content": final_answer  # 이미 순수 텍스트가 되었으니 str() 안 씌워도 됩니다.
             }
         )
 
         # 8. 프론트엔드로 전송
-        yield f"data: {json.dumps({'type': 'text', 'chunk': str(final_answer)}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'text', 'chunk': final_answer}, ensure_ascii=False)}\n\n"
         yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
 
     except Exception as e:
